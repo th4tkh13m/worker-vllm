@@ -44,16 +44,17 @@ class vLLMEngine:
                 apply_chat_template=job_input.apply_chat_template,
                 request_id=job_input.request_id,
                 batch_size_growth_factor=job_input.batch_size_growth_factor,
-                min_batch_size=job_input.min_batch_size
+                min_batch_size=job_input.min_batch_size,
+                lora_request=job_input.lora_request
             ):
                 yield batch
         except Exception as e:
             yield {"error": create_error_response(str(e)).model_dump()}
 
-    async def _generate_vllm(self, llm_input, validated_sampling_params, batch_size, stream, apply_chat_template, request_id, batch_size_growth_factor, min_batch_size: str) -> AsyncGenerator[dict, None]:
+    async def _generate_vllm(self, llm_input, validated_sampling_params, batch_size, stream, apply_chat_template, request_id, batch_size_growth_factor, min_batch_size: str, lora_request) -> AsyncGenerator[dict, None]:
         if apply_chat_template or isinstance(llm_input, list):
             llm_input = self.tokenizer.apply_chat_template(llm_input)
-        results_generator = self.llm.generate(llm_input, validated_sampling_params, request_id)
+        results_generator = self.llm.generate(llm_input, validated_sampling_params, request_id, lora_request)
         n_responses, n_input_tokens, is_first_output = validated_sampling_params.n, 0, True
         last_output_texts, token_counters = ["" for _ in range(n_responses)], {"batch": 0, "total": 0}
 

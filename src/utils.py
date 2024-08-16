@@ -3,11 +3,14 @@ import logging
 from http import HTTPStatus
 from functools import wraps
 from time import time
+import requests
+import tarfile
 
 try:
     from vllm.utils import random_uuid
     from vllm.entrypoints.openai.protocol import ErrorResponse
     from vllm import SamplingParams
+    from vllm.lora import LoRARequest
 except ImportError:
     logging.warning("Error importing vllm, skipping related imports. This is ONLY expected when baking model into docker image from a machine without GPUs")
     pass
@@ -31,6 +34,31 @@ def count_physical_cores():
 
     return len(cores)
 
+def get_top_level_directory(tar_path):
+    with tarfile.open(tar_path, 'r:gz') as tar:
+        first_member = tar.next()
+        if first_member.isdir():
+            return first_member.name
+    return None
+
+def extract_tarfile(file_path, extract_path):
+    top_level_dir = get_top_level_directory(file_path)
+    
+    with tarfile.open(file_path, 'r:gz') as tar:
+        if top_level_dir and top_level_dir == os.path.basename(extract_path):
+            # Extract to parent directory to avoid creating a nested directory
+            tar.extractall(path=os.path.dirname(extract_path))
+        else:
+            tar.extractall(path=extract_path)
+
+def download_file(url, local_filename):
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(local_filename, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192): 
+                f.write(chunk)
+    logging.info(f"Downloaded {url} to {local_filename}")
+    return local_filename
 
 class JobInput:
     def __init__(self, job):
@@ -47,6 +75,7 @@ class JobInput:
         self.min_batch_size = int(min_batch_size) if min_batch_size else None 
         self.openai_route = job.get("openai_route")
         self.openai_input = job.get("openai_input")
+        self.lora_request = LoRARequest("safecoder", 1, "/tmp/mistral-7b-lora-safecoder")
 
 class DummyRequest:
     async def is_disconnected(self):
